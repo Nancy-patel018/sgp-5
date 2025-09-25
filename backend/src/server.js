@@ -11,6 +11,8 @@ import jwt from 'jsonwebtoken';
 import pkg from 'pg';
 const { Pool } = pkg;
 import fs from 'fs/promises';
+import fsSync from 'fs';
+import { parse as csvParse } from 'csv-parse';
 
 const app = express();
 app.use(express.json());
@@ -130,6 +132,46 @@ app.delete('/api/bookmarks/:id', authenticateToken, async (req, res) => {
 app.get('/api/services', async (req, res) => {
     // TODO: Implement service search from DB
     res.json({ services: [] });
+});
+
+// Serve tiffin_rental CSV as JSON
+app.get('/api/tiffin-rental', async (req, res) => {
+    try {
+        // Prefer public copy so frontend can fetch directly during dev
+        const candidates = [
+            path.join(path.resolve('../'), 'public', 'data', 'Food', 'tifin_rental.csv'),
+            path.join(path.resolve('../'), 'public', 'data', 'Food', 'tiffin_rental.csv'),
+            path.join(path.resolve('../'), 'dist', 'data', 'Food', 'tifin_rental.csv'),
+            path.join(path.resolve('../'), 'dist', 'data', 'Food', 'tiffin_rental.csv'),
+            path.join(path.resolve('../'), 'dist', 'food', 'tifin_rental.csv'),
+            path.join(path.resolve('../'), 'dist', 'food', 'tiffin_rental.csv'),
+        ];
+
+        let csvPath = null;
+        for (const p of candidates) {
+            if (fsSync.existsSync(p)) {
+                csvPath = p;
+                break;
+            }
+        }
+
+        if (!csvPath) {
+            console.warn('tiffin_rental.csv not found in candidate locations');
+            return res.status(404).json({ error: 'tiffin_rental.csv not found' });
+        }
+
+        const raw = await fs.readFile(csvPath, 'utf8');
+        csvParse(raw, { columns: true, skip_empty_lines: true }, (err, records) => {
+            if (err) {
+                console.error('CSV parse error:', err);
+                return res.status(500).json({ error: 'Failed to parse CSV' });
+            }
+            res.json(records);
+        });
+    } catch (err) {
+        console.error('Tiffin rental endpoint error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // Registration endpoint

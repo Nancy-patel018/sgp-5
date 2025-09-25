@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import mockServices, { Service } from '../data/mockServices';
 import ServiceDetails from './ServiceDetails';
 import Papa from 'papaparse';
+import { useMemo } from "react";
 import { VAISHNO_IMAGE, VAISHNO_LISTING } from '../data/areas/vaishno_devi_circle';
 import { SHANTIGRAM_IMAGE, SHANTIGRAM_LISTING } from '../data/areas/shantigram';
 import { JAGATPUR_IMAGE, JAGATPUR_LISTING } from '../data/areas/jagatpur';
@@ -30,48 +31,19 @@ import { NEW_MANINAGAR_IMAGE, NEW_MANINAGAR_LISTING } from '../data/areas/new_ma
 import { MAHADEV_NAGAR_IMAGE, MAHADEV_NAGAR_LISTING } from '../data/areas/mahadev_nagar';
 import { ODHAV_IMAGE, ODHAV_LISTING } from '../data/areas/odhav';
 import { RAMOL_IMAGE, RAMOL_LISTING } from '../data/areas/ramol';
-import { Search, MapPin, Star, Bookmark, BookmarkCheck } from 'lucide-react';
+import { MapPin, Star, Bookmark, BookmarkCheck } from 'lucide-react';
 
-// shared Service type is available in data module if needed
-
-export const ServiceSearch: React.FC = () => {
-  // Map tifin_rental.csv row to Service
-  const mapTiffinRow = (row: any, idx: number): Service => {
-    const id = `tiffin-${idx}`;
-    const priceStr = row['Estimated_Price_Per_Tiffin_INR'] || '';
-    // Try to extract a number from the price range string
-    let price = 0;
-    const match = priceStr.match(/\d+/g);
-    if (match && match.length > 0) price = Number(match[0]);
-    const rating = Number(row['Rating']) || computeNearbyFour(id);
-    const name = row['Name'] || 'Tiffin Service';
-    const city = row['City'] || '';
-    const description = `${row['Type'] || 'Tiffin Service'}${row['Address'] ? ' at ' + row['Address'] : ''}`;
-    const image = row['Menu'] || 'https://cdn-icons-png.flaticon.com/512/1046/1046857.png';
-    return {
-      id,
-      name,
-      type: 'tiffin',
-      city,
-      price,
-      rating,
-      description,
-      image,
-      features: [row['Type'], row['Hours'], row['Phone']].filter(Boolean),
-      meta: row,
-    } as Service;
-  };
-  const [selectedCity, setSelectedCity] = useState('');
-  const [minBudget, setMinBudget] = useState(() => {
-    try { return Number(localStorage.getItem('search_min_budget')) || 0; } catch { return 0; }
+function ServiceSearch() {
+  // State and ref declarations at top level
+  const [minBudget] = useState(() => {
+    try { return Number(localStorage.getItem('search_min_budget')) || 0; } catch (e) { return 0; }
   });
   const [maxBudget, setMaxBudget] = useState(() => {
-    try { return Number(localStorage.getItem('search_max_budget')) || 25000; } catch { return 25000; }
+    try { return Number(localStorage.getItem('search_max_budget')) || 0; } catch (e) { return 0; }
   });
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedServiceTypes, setSelectedServiceTypes] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState(() => {
-    try { return localStorage.getItem('search_term') || ''; } catch { return ''; }
-  });
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [foodItem, setFoodItem] = useState('');
   const [showAreaDropdown, setShowAreaDropdown] = useState(false);
   const areaButtonRef = React.useRef<HTMLDivElement | null>(null);
@@ -79,27 +51,18 @@ export const ServiceSearch: React.FC = () => {
   const typesDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const [bookmarkIdMap, setBookmarkIdMap] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<Service | null>(null);
-    const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
-    // Area options per city
-    const areaOptionsMap: Record<string, string[]> = {
-      Ahmedabad: [
-        'Vaishno Devi Circle', 'Shantigram', 'Jagatpur', 'Bodakdev', 'Motera', 'Bopal', 'Chandkheda', 'Shela', 'Chharodi', 'Sanand', 'Shilaj', 'Tragad', 'Vastrapur', 'Ambli', 'Paldi', 'Satellite', 'Ghuma', 'Ellisbridge', 'Gota', 'Navrangpura', 'Sola', 'Jodhpur', 'Makarba', 'Vastral', 'New Maninagar', 'Mahadev Nagar', 'Odhav', 'Ramol'
-      ],
-      Baroda: [
-        'Alkapuri', 'Fatehgunj', 'Gotri', 'Manjalpur', 'Makarpura', 'Karelibaug', 'Vasna', 'Waghodia Road'
-      ],
-      Gandhinagar: [
-        'Sector 1', 'Sector 2', 'Sector 6', 'Sector 11', 'Sector 21', 'Sector 22', 'Sector 23', 'Sector 24', 'Sector 25', 'Sector 26', 'Sector 27', 'Sector 28'
-      ],
-      Rajkot: [
-        'Kalavad Road', 'Yagnik Road', 'University Road', '150 Feet Ring Road', 'Mavdi', 'Amin Marg', 'Sadar'
-      ],
-      Surat: [
-        'Adajan', 'Vesu', 'Piplod', 'City Light', 'Katargam', 'Varachha', 'Udhna', 'Athwa'
-      ],
-    };
-    const areaOptions = areaOptionsMap[selectedCity] || [];
-    const normalizedKnownAreas = new Set(areaOptions.map(a => a.toString().trim().toLowerCase()));
+  const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  const [selectedCity, setSelectedCity] = useState<string>('');
+
+  // Helper function used in mapTiffinRow
+  // Removed duplicate computeNearbyFour
+  const areaOptionsMap: Record<string, string[]> = {
+    Ahmedabad: [
+      'Vaishno Devi Circle', 'Shantigram', 'Jagatpur', 'Bodakdev', 'Motera', 'Bopal', 'Chandkheda', 'Shela', 'Chharodi', 'Sanand', 'Shilaj', 'Tragad', 'Vastrapur', 'Ambli', 'Paldi', 'Satellite', 'Ghuma', 'Ellisbridge', 'Gota', 'Navrangpura', 'Sola', 'Jodhpur', 'Makarba', 'Vastral', 'New Maninagar', 'Mahadev Nagar', 'Odhav', 'Ramol'
+    ],
+  };
+  const areaOptions = areaOptionsMap[selectedCity] || [];
+  const normalizedKnownAreas = new Set(areaOptions.map(a => a.toString().trim().toLowerCase()));
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -283,7 +246,7 @@ export const ServiceSearch: React.FC = () => {
         const cleanRent = rawRent.toString().replace(/[^0-9.]/g, '');
         price = Number(cleanRent) || 0;
       }
-      
+
       const svc = {
         id: id,
         name: `${row['Property Type'] || 'Property'} - ${row['Locality / Area'] || row.Locality}`,
@@ -295,7 +258,7 @@ export const ServiceSearch: React.FC = () => {
         image: '',
         features: (row.Amenities || '').split(/[,|;]/).map((s: string) => s.trim()).filter(Boolean),
       } as Service;
-      
+
       // Inject area-specific images + listing when locality matches
       const locality = (row['Locality / Area'] || row['Locality'] || '').toString().trim();
       const city = (row['City'] || '').toString().trim().toLowerCase();
@@ -555,6 +518,21 @@ export const ServiceSearch: React.FC = () => {
   };
 
   // normalize food CSV (swiggy_Ahm.csv) row to Service-like item
+  // Stub for mapTiffinRow to prevent reference errors
+  const mapTiffinRow = (row: any, idx: number): Service => {
+    return {
+      id: `tiffin-${idx}`,
+      name: row['Tiffin Name'] || 'Unknown Tiffin',
+      type: 'tiffin',
+      city: row['City'] || 'Ahmedabad',
+      price: Number(row['Price']) || 0,
+      rating: 4.0,
+      description: row['Description'] || '',
+      image: '',
+      features: [row['Provider'] || '', row['Area'] || ''],
+      meta: row
+    } as Service;
+  };
   const mapFoodRow = (row: any, idx: number): Service => {
     const id = `food-${idx}`;
     const price = Number(row['Price (INR)']) || 0;
@@ -576,74 +554,44 @@ export const ServiceSearch: React.FC = () => {
   };
 
   useEffect(() => {
-  // Reset transient CSV state
-
-    // decide whether to load CSVs depending on selected filters
+    // Improved: reload CSV and filter data instantly on any filter change
     const loadCsv = async () => {
-      // If no needs selected, treat it as "All Services": load accommodation for the city
-      // and food data only when available (Ahmedabad dataset)
       const effectiveTypes = selectedServiceTypes.length === 0
         ? ['accommodation', 'food']
         : selectedServiceTypes;
-
       setIsLoadingCsv(true);
       setCsvError(null);
-
       try {
         let allItems: Service[] = [];
-
-        // Load accommodation data if accommodation is selected (or All Services)
+        // Accommodation
         if (effectiveTypes.includes('accommodation')) {
           const cityFile = selectedCity || 'Surat';
           const path = `/data/Accomodation/${cityFile}.csv`;
-          console.log(`Attempting to load accommodation data from: ${path}`);
           const res = await fetch(path);
           if (res.ok) {
             const text = await res.text();
-            console.log(`Loaded CSV text length: ${text.length} characters for ${cityFile}`);
             const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-            console.log(`Parsed ${parsed.data?.length || 0} rows from ${cityFile} CSV`);
             const items = (parsed.data || []).map((r: any) => {
               const s = mapAccommodationRow(r);
               if (s) s.meta = r;
               return s;
             }).filter((x: any) => x) as Service[];
-            console.log(`Created ${items.length} valid accommodation items for ${cityFile}`);
             allItems.push(...items);
-          } else {
-            console.warn(`Failed to load ${cityFile} CSV: ${res.status} ${res.statusText}`);
-            // Show user-friendly message when city data is not available
-            window.dispatchEvent(new CustomEvent('toast:show', {
-              detail: { message: `No accommodation data available for ${cityFile}. Try another city.`, type: 'info' }
-            }));
           }
         }
-
-        // Load food data if food is selected (or All Services)
+        // Food
         if (effectiveTypes.includes('food')) {
-          if (selectedCity && selectedCity !== 'Ahmedabad') {
-            try {
-              window.dispatchEvent(new CustomEvent('toast:show', {
-                detail: { message: `Food data is available only for Ahmedabad right now.`, type: 'info' }
-              }));
-            } catch {}
-          }
-          if (selectedCity && selectedCity !== 'Ahmedabad') {
-            // Skip loading food CSV for other cities
-          } else {
+          if (!selectedCity || selectedCity === 'Ahmedabad') {
             const path = `/data/Food/swiggy_Ahm.csv`;
             const res = await fetch(path);
             if (res.ok) {
               const text = await res.text();
               const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-              // ...existing code...
               const allData = parsed.data || [];
               const categoryGroups: Record<string, any[]> = {};
               allData.forEach((item: any) => {
                 const category = item['Category'] || 'Other';
-                if (!categoryGroups[category]) {
-                  categoryGroups[category] = [];
-                }
+                if (!categoryGroups[category]) categoryGroups[category] = [];
                 categoryGroups[category].push(item);
               });
               const categories = Object.keys(categoryGroups);
@@ -663,64 +611,29 @@ export const ServiceSearch: React.FC = () => {
                 return s;
               });
               allItems.push(...items);
-              console.log(`Loaded ${items.length} food items for Ahmedabad`);
             }
           }
         }
-
-        // Load tiffin data if tiffin is selected
+        // Tiffin
         if (effectiveTypes.includes('tiffin')) {
-          // Use the correct public path for Vite/React dev server
           const tiffinPath = `/data/Food/tifin_rental.csv`;
           const res = await fetch(tiffinPath);
           if (res.ok) {
             const text = await res.text();
             const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
             const tiffinData = parsed.data || [];
-            // Filter by city if selected
             const filteredTiffin = selectedCity
               ? tiffinData.filter((row: any) => (row.City || '').toLowerCase() === selectedCity.toLowerCase())
               : tiffinData;
             const tiffinItems = filteredTiffin.map((row: any, i: number) => mapTiffinRow(row, i));
             allItems.push(...tiffinItems);
-            console.log(`Loaded ${tiffinItems.length} tiffin services for ${selectedCity || 'all cities'}`);
           }
         }
-  // Map tifin_rental.csv row to Service
-  const mapTiffinRow = (row: any, idx: number): Service => {
-    const id = `tiffin-${idx}`;
-    const priceStr = row['Estimated_Price_Per_Tiffin_INR'] || '';
-    // Try to extract a number from the price range string
-    let price = 0;
-    const match = priceStr.match(/\d+/g);
-    if (match && match.length > 0) price = Number(match[0]);
-    const rating = Number(row['Rating']) || computeNearbyFour(id);
-    const name = row['Name'] || 'Tiffin Service';
-    const city = row['City'] || '';
-    const description = `${row['Type'] || 'Tiffin Service'}${row['Address'] ? ' at ' + row['Address'] : ''}`;
-    const image = row['Menu'] || 'https://cdn-icons-png.flaticon.com/512/1046/1046857.png';
-    return {
-      id,
-      name,
-      type: 'tiffin',
-      city,
-      price,
-      rating,
-      description,
-      image,
-      features: [row['Type'], row['Hours'], row['Phone']].filter(Boolean),
-      meta: row,
-    } as Service;
-  };
-
         setCsvServices(allItems.length > 0 ? allItems : null);
-        
-        // If no CSV data loaded but we have selected needs, ensure mock services are used
         if (allItems.length === 0 && selectedServiceTypes.length > 0) {
-          setCsvServices(null); // This will trigger fallback to mockServices in filteredServices
+          setCsvServices(null);
         }
       } catch (err) {
-        console.error('Failed to load CSV', err);
         setCsvError('Failed to load data. Please try again.');
         setCsvServices(null);
       } finally {
@@ -728,109 +641,43 @@ export const ServiceSearch: React.FC = () => {
       }
     };
     loadCsv();
-  }, [selectedServiceTypes, selectedCity]);
+  }, [selectedServiceTypes, selectedCity, minBudget, maxBudget, searchTerm]);
 
   // (Optional) Progressive loading function removed as it's currently unused.
 
-  const filteredServices = (csvServices && csvServices.length > 0 ? csvServices : mockServices).filter(service => {
-    // If a city is selected, show only that city's data; otherwise allow all cities
+  
+
+const filteredServices = useMemo(() => {
+  return (csvServices && csvServices.length > 0 ? csvServices : mockServices).filter(service => {
+    // City filter
     const cityMatch = !selectedCity || (service.city && service.city.toLowerCase() === selectedCity.toLowerCase());
-    
-    // Debug city filtering
-    if (selectedCity && service.city && service.city.toLowerCase() !== selectedCity.toLowerCase()) {
-      console.log(`City mismatch: service.city="${service.city}" vs selectedCity="${selectedCity}" for service "${service.name}"`);
+
+    // Area filter (strict, case-insensitive)
+    let areaMatch = true;
+    let selectedArea = searchTerm?.trim().toLowerCase();
+    if (selectedArea && service.type === "accommodation") {
+      const localityRaw = (service.meta?.["Locality / Area"] || service.meta?.["Locality"] || "").toString();
+      areaMatch = localityRaw.trim().toLowerCase() === selectedArea;
     }
-    
-    // If no needs selected, treat as All Services
+
+    // Type filter
     const typeMatch = selectedServiceTypes.length === 0 || selectedServiceTypes.includes(service.type);
-    // Fix budget bounds - ensure valid numbers and proper comparison
+
+    // Budget filter
     const price = Number.isFinite(Number(service.price)) ? Number(service.price) : 0;
-    // sanitize inputs
-    let minBudgetNum = Number(minBudget);
     let maxBudgetNum = Number(maxBudget);
-    if (!Number.isFinite(minBudgetNum) || minBudgetNum < 0) minBudgetNum = 0;
     if (!Number.isFinite(maxBudgetNum) || maxBudgetNum < 0) maxBudgetNum = 0;
-    // If user accidentally swapped values, normalize to [low, high]
-    if (maxBudgetNum > 0 && minBudgetNum > maxBudgetNum) {
-      const tmp = minBudgetNum; minBudgetNum = maxBudgetNum; maxBudgetNum = tmp;
-    }
-    // 0 = no upper limit
-    const budgetMatch = maxBudgetNum === 0
-      ? (price >= minBudgetNum)
-      : (price >= minBudgetNum && price <= maxBudgetNum);
-    
-    const termRaw = (searchTerm || '').toString().trim();
-    const term = termRaw.toLowerCase();
+    const budgetMatch = maxBudgetNum === 0 || price <= maxBudgetNum;
 
-    // If the user typed a known area name exactly (case-insensitive),
-    // restrict results to services that are actually in that area/locality.
-    // Otherwise, fall back to the broader fuzzy matching used before.
-    let searchMatch = true;
-    const isKnownArea = term && normalizedKnownAreas.has(term);
-    if (term) {
-      if (isKnownArea) {
-        // Check area/locality fields specifically for an area match.
-        let areaMatch = false;
-        const meta = (service as any).meta || {};
-        // Common CSV/meta keys that may hold locality/area
-        const localityKeys = ['Locality / Area', 'Locality', 'locality', 'Area', 'area'];
-        for (const k of localityKeys) {
-          const v = meta[k];
-          if (!v) continue;
-          try {
-            const matched = v.toString().toLowerCase().includes(term);
-            if (matched) { areaMatch = true; break; }
-          } catch (e) { /* ignore */ }
-        }
-
-        // Some services encode locality in the name (e.g. "PG - Vastral").
-        try {
-          const parts = (service.name || '').split('-').map(p => p.trim().toLowerCase());
-          if (parts.length > 0) {
-            const last = parts[parts.length - 1];
-            if (last && last.includes(term)) areaMatch = true;
-          }
-        } catch (e) { }
-
-        // Also allow matching from features (some mock items may include area in features)
-        try {
-          if ((service.features || []).join(' ').toLowerCase().includes(term)) areaMatch = true;
-        } catch (e) { }
-
-        searchMatch = areaMatch;
-      } else {
-        // broad fuzzy search across name/description/city/features/meta
-        const sname = (service.name || '').toLowerCase();
-        const sdesc = (service.description || '').toLowerCase();
-        const scity = (service.city || '').toLowerCase();
-        const nameMatch = sname.includes(term) || sdesc.includes(term) || scity.includes(term);
-        const featuresMatch = (service.features || []).join(' ').toLowerCase().includes(term);
-        const meta = (service as any).meta || {};
-        // scan all meta values for the term
-        let metaMatch = false;
-        for (const v of Object.values(meta)) {
-          if (!v) continue;
-          if ((v + '').toString().toLowerCase().includes(term)) { metaMatch = true; break; }
-        }
-        searchMatch = nameMatch || featuresMatch || metaMatch;
-      }
+    // Strict: if area is searched, require BOTH area and budget
+    if (searchTerm && service.type === "accommodation") {
+      return cityMatch && areaMatch && typeMatch && budgetMatch;
     }
 
-    const finalResult = cityMatch && typeMatch && budgetMatch && searchMatch;
-    
-    // Double-check budget compliance before returning
-    if (finalResult && maxBudgetNum > 0 && price > maxBudgetNum) {
-      console.error('🚨 BUDGET FILTER FAILED - FORCING EXCLUSION:', {
-        serviceName: service.name,
-        price: price,
-        maxBudget: maxBudgetNum,
-        originalBudgetMatch: budgetMatch
-      });
-      return false; // Force exclusion
-    }
-    
-    return finalResult;
+    return cityMatch && typeMatch && budgetMatch;
   });
+}, [csvServices, mockServices, selectedCity, searchTerm, selectedServiceTypes, maxBudget]);
+
 
   // --- Multi-need tabs and sorting ---
   type ActiveTypeTab = 'all' | Service['type'];
@@ -894,19 +741,19 @@ export const ServiceSearch: React.FC = () => {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
-            
-            const res = await fetch('/api/bookmarks', { 
+
+            const res = await fetch('/api/bookmarks', {
               headers: { 'Authorization': `Bearer ${token}` },
               signal: controller.signal
             });
             clearTimeout(timeoutId);
-            
+
             if (res.ok) {
               const data = await res.json();
               const bookmark = (data.bookmarks || []).find((b: any) => b.service_id === serviceId);
               if (bookmark) {
-                await fetch(`/api/bookmarks/${bookmark.id}`, { 
-                  method: 'DELETE', 
+                await fetch(`/api/bookmarks/${bookmark.id}`, {
+                  method: 'DELETE',
                   headers: { 'Authorization': `Bearer ${token}` },
                   signal: controller.signal
                 });
@@ -921,14 +768,14 @@ export const ServiceSearch: React.FC = () => {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
-            
-            const res = await fetch(`/api/bookmarks/${bookmarkId}`, { 
-              method: 'DELETE', 
+
+            const res = await fetch(`/api/bookmarks/${bookmarkId}`, {
+              method: 'DELETE',
               headers: { 'Authorization': `Bearer ${token}` },
               signal: controller.signal
             });
             clearTimeout(timeoutId);
-            
+
             if (res.ok) {
               setBookmarkIdMap((m) => { const next = { ...m }; delete next[serviceId]; return next; });
             }
@@ -1013,50 +860,7 @@ export const ServiceSearch: React.FC = () => {
   };
 
   // Handle food item search with price comparison
-  const handleFoodSearch = async () => {
-    if (!selectedCity || !foodItem) {
-      window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: { message: 'Please select a city and enter a food item', type: 'error' }
-      }));
-      return;
-    }
-
-    try {
-      // For now, we'll implement a client-side filter since backend endpoint doesn't exist yet
-      // This will filter the existing CSV data for the food item
-      const filteredResults = csvServices?.filter(service => {
-        const dishName = service.name?.toLowerCase() || '';
-        const searchFood = foodItem.toLowerCase();
-        return dishName.includes(searchFood);
-      }) || [];
-
-      if (filteredResults.length === 0) {
-        window.dispatchEvent(new CustomEvent('toast:show', {
-          detail: { message: `Sorry, ${foodItem} is not available in ${selectedCity}`, type: 'info' }
-        }));
-        return;
-      }
-
-      // Sort by price (lowest first)
-      const sortedResults = filteredResults.sort((a, b) => (a.price || 0) - (b.price || 0));
-
-      // Update the display to show only filtered results
-      setCsvServices(sortedResults);
-
-      window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: {
-          message: `Found ${sortedResults.length} options for ${foodItem} in ${selectedCity}. Showing cheapest first!`,
-          type: 'success'
-        }
-      }));
-
-    } catch (error) {
-      console.error('Food search error:', error);
-      window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: { message: 'Failed to search for food items', type: 'error' }
-      }));
-    }
-  };
+  // Removed unused handleFoodSearch
 
   return (
     <div className="space-y-6">
@@ -1100,7 +904,7 @@ export const ServiceSearch: React.FC = () => {
               <span className="text-sm text-slate-700">
                 {selectedServiceTypes.length === 0 ? 'All Services' : `${selectedServiceTypes.length} selected`}
               </span>
-              <svg className={`w-4 h-4 transition-transform ${showTypesDropdown ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd"/></svg>
+              <svg className={`w-4 h-4 transition-transform ${showTypesDropdown ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd" /></svg>
             </button>
             {showTypesDropdown && (
               <div className="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-lg shadow-md p-3 max-h-64 overflow-auto">
@@ -1111,7 +915,7 @@ export const ServiceSearch: React.FC = () => {
                     onChange={() => {
                       setSelectedServiceTypes([]);
                       setFoodItem('');
-                      try { localStorage.setItem('selected_service_types', JSON.stringify([])); } catch {}
+                      try { localStorage.setItem('selected_service_types', JSON.stringify([])); } catch { }
                     }}
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
@@ -1132,7 +936,7 @@ export const ServiceSearch: React.FC = () => {
                           if (type.id === 'food') setFoodItem('');
                         }
                         setSelectedServiceTypes(newSelectedTypes);
-                        try { localStorage.setItem('selected_service_types', JSON.stringify(newSelectedTypes)); } catch {}
+                        try { localStorage.setItem('selected_service_types', JSON.stringify(newSelectedTypes)); } catch { }
                       }}
                       className="rounded text-blue-600 focus:ring-blue-500"
                     />
@@ -1158,94 +962,63 @@ export const ServiceSearch: React.FC = () => {
           )}
 
           <div className="flex items-end">
-            <div className="w-full flex space-x-2">
-              {selectedServiceTypes.includes('food') && foodItem ? (
-                <button
-                  onClick={handleFoodSearch}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-blue-700 transition-all flex items-center justify-center space-x-2"
-                >
-                  <Search className="w-4 h-4" />
-                  <span>Find Best Price</span>
-                </button>
-              ) : (
-                <>
-                  <input
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      try {
-                        localStorage.setItem('search_term', e.target.value);
-                      } catch {}
-                    }}
-                    placeholder="Search by area or name (e.g., Vastral)"
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <div ref={areaButtonRef} className="relative w-full">
-                    <button onClick={() => setShowAreaDropdown(s => !s)} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all flex items-center justify-center space-x-2 w-full">
-                      <Search className="w-4 h-4" />
-                      <span>Area</span>
-                    </button>
-                    {showAreaDropdown && (
-                      <div className="absolute left-0 mt-2 w-full bg-white border border-slate-200 rounded shadow-lg z-50">
-                        <div className="p-2 max-h-60 overflow-auto">
-                          {areaOptions.length === 0 ? (
-                            <div className="text-slate-400 px-2 py-2">Select a city to see areas</div>
-                          ) : (
-                            areaOptions.filter(a => a.toLowerCase().includes(searchTerm.toLowerCase())).map((a) => (
-                              <button key={a} onClick={() => { 
-                                setSearchTerm(a); 
-                                setShowAreaDropdown(false); 
-                                try {
-                                  localStorage.setItem('search_term', a);
-                                } catch {}
-                              }} className="w-full text-left px-2 py-2 hover:bg-slate-100 rounded">{a}</button>
-                            ))
-                          )}
-                          {areaOptions.length > 0 && areaOptions.filter(a => a.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
-                            <div className="text-slate-400 px-2 py-2">No areas found</div>
-                          )}
-                        </div>
-                      </div>
+            <div className="w-full flex flex-col items-center">
+              <div className="w-full max-w-md relative">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  placeholder="Search area (e.g., Vastral)"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
+                />
+                {searchTerm && showSuggestions && (
+                  <div className="absolute left-0 top-full w-full bg-white rounded-lg shadow-lg mt-1 z-50 border border-slate-100">
+                    {(areaOptions.filter(a => a.toLowerCase().startsWith(searchTerm.trim().toLowerCase())).length > 0) ? (
+                      areaOptions.filter(a => a.toLowerCase().startsWith(searchTerm.trim().toLowerCase())).map(suggestion => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onMouseDown={() => {
+                            setSearchTerm(suggestion);
+                            setShowSuggestions(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-100 transition-colors cursor-pointer text-base"
+                        >
+                          {suggestion}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-slate-400">No areas found</div>
                     )}
                   </div>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Budget row (always visible) */}
+        {/* Budget row (single slider) */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Budget Range</label>
-            <div className="flex space-x-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Budget (Up to)</label>
+            <div className="flex flex-col gap-2 items-center">
+              <div className="w-full flex justify-center text-lg text-blue-600 font-semibold mb-1">
+                ₹{maxBudget.toLocaleString()}/month
+              </div>
               <input
-                type="number"
+                type="range"
                 min={0}
-                value={minBudget}
-                onChange={e => {
-                  const v = Math.max(0, Number(e.target.value) || 0);
-                  setMinBudget(v);
-                  try {
-                    localStorage.setItem('search_min_budget', String(v));
-                  } catch {}
-                }}
-                className="w-1/2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Min Amount"
-              />
-              <input
-                type="number"
-                min={0}
+                max={100000}
+                step={100}
                 value={maxBudget}
                 onChange={e => {
-                  const v = Math.max(0, Number(e.target.value) || 0);
-                  setMaxBudget(v);
-                  try {
-                    localStorage.setItem('search_max_budget', String(v));
-                  } catch {}
+                  const val = Math.max(0, Number(e.target.value) || 0);
+                  setMaxBudget(val);
+                  try { localStorage.setItem('search_max_budget', String(val)); } catch { }
                 }}
-                className="w-1/2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Max Amount"
+                className="w-full accent-blue-500"
               />
             </div>
           </div>
@@ -1280,13 +1053,13 @@ export const ServiceSearch: React.FC = () => {
       {/* Debug info bar */}
       {process.env.NODE_ENV !== 'production' && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs">
-          <strong>Debug:</strong> City: {selectedCity || 'All'} | 
-          Types: {selectedServiceTypes.length === 0 ? 'All' : selectedServiceTypes.join(', ')} | 
-          Budget: {minBudget}-{maxBudget} | 
-          Active Tab: {activeTypeTab} | 
-          Sort: {sortBy} | 
-          Filtered: {filteredServices.length} | 
-          Tab Filtered: {tabFiltered.length} | 
+          <strong>Debug:</strong> City: {selectedCity || 'All'} |
+          Types: {selectedServiceTypes.length === 0 ? 'All' : selectedServiceTypes.join(', ')} |
+          Budget: {minBudget}-{maxBudget} |
+          Active Tab: {activeTypeTab} |
+          Sort: {sortBy} |
+          Filtered: {filteredServices.length} |
+          Tab Filtered: {tabFiltered.length} |
           Sorted: {sortedServices.length}
         </div>
       )}
@@ -1428,4 +1201,5 @@ export const ServiceSearch: React.FC = () => {
       <ServiceDetails service={selected} onClose={() => setSelected(null)} />
     </div>
   );
-};
+}
+export default ServiceSearch;

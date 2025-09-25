@@ -11,7 +11,7 @@ export const CostCalculatorPage: React.FC = () => {
     try {
       const raw = localStorage.getItem('local_bookmarks');
       if (raw) setBookmarkedIds(new Set(JSON.parse(raw)));
-    } catch {}
+    } catch { }
   }, []);
 
   const items = useMemo(() => {
@@ -56,15 +56,41 @@ export const CostCalculatorPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Budget Min</label>
-            <input type="number" min={0} value={min} onChange={e => setMin(Number(e.target.value) || 0)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Budget Range</label>
+        <div className="flex flex-col gap-2 items-center">
+          <div className="w-full flex justify-between text-xs text-slate-500 mb-1">
+            <span>₹{min.toLocaleString()}</span>
+            <span>₹{max.toLocaleString()}</span>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Budget Max</label>
-            <input type="number" min={0} value={max} onChange={e => setMax(Number(e.target.value) || 0)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <p className="text-xs text-slate-500 mt-1">Tip: set Max to 0 to ignore the upper limit.</p>
+          <div className="w-full flex gap-2 items-center">
+            <input
+              type="range"
+              min={0}
+              max={100000}
+              step={100}
+              value={min}
+              onChange={e => {
+                const val = Math.min(Number(e.target.value), max - 100);
+                setMin(val);
+              }}
+              className="w-1/2 accent-blue-500"
+            />
+            <input
+              type="range"
+              min={0}
+              max={100000}
+              step={100}
+              value={max}
+              onChange={e => {
+                const val = Math.max(Number(e.target.value), min + 100);
+                setMax(val);
+              }}
+              className="w-1/2 accent-blue-500"
+            />
+          </div>
+          <div className="w-full flex justify-between text-xs text-slate-400">
+            <span>Min</span>
+            <span>Max</span>
           </div>
         </div>
       </div>
